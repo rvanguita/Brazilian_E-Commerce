@@ -13,3 +13,6 @@ notebook
 imblearn
 scipy
 shap
+nltk
+wordcloud
+emoji
