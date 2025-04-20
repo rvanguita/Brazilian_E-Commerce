@@ -20,7 +20,8 @@ The `main.ipynb` notebook contains the core code responsible for executing the a
 
 The `src/` directory houses the Python scripts developed throughout the analytical process. These scripts implement functions and classes designed to streamline future analyses by promoting code reusability, graphical standardization, and workflow organization. Each file follows a modular structure to minimize code redundancy and maintain the visual consistency adopted across all project visualizations.
 
-The `data/` directory contains a `.zip` archive with the original raw data, as well as six `.csv` files representing the different turbines analyzed. Lastly, the `requirements.txt` file provides a complete list of libraries and dependencies used in this project, enabling straightforward environment replication.
+The `data/` directory contains the `.csv` file with the dataset used in this project. Finally, the `requirements.txt` file provides a complete list of libraries and dependencies, enabling easy replication of the development environment by other users.
+
 
 
 ## [Data set](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
