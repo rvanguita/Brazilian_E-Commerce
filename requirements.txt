@@ -16,3 +16,5 @@ shap
 nltk
 wordcloud
 emoji
+transformers
+torch
