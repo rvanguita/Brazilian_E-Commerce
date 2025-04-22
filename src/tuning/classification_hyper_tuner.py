@@ -1,93 +1,130 @@
+import logging
+from collections import Counter
+from typing import Any, Callable, Dict, Optional, Tuple, Union
+
 import catboost as cb
 import lightgbm as lgb
-import xgboost as xgb
-import shap
+import numpy as np
 import optuna
-
-from sklearn.model_selection import cross_val_score, StratifiedKFold
+import xgboost as xgb
+from sklearn.base import clone
 from sklearn.metrics import f1_score, make_scorer
+from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.pipeline import Pipeline
 from sklearn.utils.multiclass import type_of_target
-from imblearn.over_sampling import SMOTE
-from collections import Counter
-from scipy.sparse import issparse
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
-
-class ClassificationHyperTuner:
-    def __init__(self, model_name: str, X_train, y_train, X_test=None, y_test=None, n_trials=100, use_cv=False, use_smote=False):
-        self.X_train = X_train
-        self.y_train = y_train
-        self.X_test = X_test
-        self.y_test = y_test
+class HyperparameterTuner:
+    def __init__(
+        self,
+        features: Any,
+        labels: Any,
+        pipeline: Pipeline,
+        test_size: float = 0.2,
+        n_trials: int = 100,
+        use_cross_validation: bool = False,
+        model_step: str = "model"
+    ):
         self.n_trials = n_trials
-        self.use_cv = use_cv
-        self.model_name = model_name
+        self.use_cv = use_cross_validation
+        self.pipeline = pipeline
+        self.model_step = model_step
 
-        self._check_target_type(y_train)
-        if use_smote:
-            self.X_train, self.y_train = self._apply_smote(X_train, y_train)
+        if self.model_step not in self.pipeline.named_steps:
+            raise ValueError(f"Pipeline must include a step named '{self.model_step}'.")
 
-        self.model_specs = {
-            "lgb": (lgb.LGBMClassifier, self._params_lgb, "binary", "multiclass"),
-            "xgb": (xgb.XGBClassifier, self._params_xgb, "binary:logistic", "multi:softprob"),
-            "cat": (cb.CatBoostClassifier, self._params_cat, "Logloss", "MultiClass")
+        self._detect_problem_type(labels)
+        self._split_data(features, labels, test_size)
+
+        self.param_generators: Dict[Any, Callable] = {
+            lgb.LGBMClassifier: self._lgb_params,
+            xgb.XGBClassifier: self._xgb_params,
+            cb.CatBoostClassifier: self._catboost_params,
         }
-        
-    def _check_target_type(self, y_train):    
-        target_type = type_of_target(y_train)
-        if target_type == 'binary':
-            self.problem_type = 'binary'
-            self.num_classes = None
-        elif target_type == 'multiclass':
-            self.problem_type = 'multiclass'
-            self.num_classes = len(set(y_train))
+
+        self._assign_param_generator()
+
+    def _assign_param_generator(self) -> None:
+        model = self.pipeline.named_steps.get(self.model_step)
+        for model_class, param_func in self.param_generators.items():
+            if isinstance(model, model_class):
+                self.param_generator = param_func
+                return
+        raise ValueError(f"Unsupported model type: {type(model).__name__}")
+
+    def _detect_problem_type(self, labels: Any) -> None:
+        target_type = type_of_target(labels)
+        if target_type == "binary":
+            self.problem_type = "binary"
+            self.num_classes = 2
+        elif target_type == "multiclass":
+            self.problem_type = "multiclass"
+            self.num_classes = len(set(labels))
         else:
             raise ValueError(f"Unsupported target type: {target_type}")
-        
-    def _apply_smote(self, X, y):
-        strategy = 'auto' if self.problem_type == 'binary' else 'not majority'
-        X_dense = X.toarray() if issparse(X) else X
-        smote = SMOTE(sampling_strategy=strategy, random_state=42)
-        return smote.fit_resample(X_dense, y)
-        
-    def _average_strategy(self):
-        if self.problem_type == 'binary':
-            return 'binary'
-        class_counts = Counter(self.y_train)
-        imbalance = max(class_counts.values()) / min(class_counts.values())
-        return 'weighted' if imbalance > 1.5 else 'macro'
 
-    def _eval_metric(self):
-        if self.model_name == "xgb":
+    def _split_data(self, X: Any, y: Any, test_size: float) -> None:
+        if self.use_cv:
+            self.X_train, self.y_train = X, y
+            self.X_test = self.y_test = None
+        else:
+            self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
+                X, y, test_size=test_size, stratify=y, random_state=42
+            )
+
+    def _get_average_strategy(self) -> str:
+        if self.problem_type == "binary":
+            return "binary"
+        class_distribution = Counter(self.y_train)
+        imbalance_ratio = max(class_distribution.values()) / min(class_distribution.values())
+        return "weighted" if imbalance_ratio > 1.5 else "macro"
+
+    def _get_eval_metric(self) -> Optional[str]:
+        model = self.pipeline.named_steps[self.model_step]
+        if isinstance(model, xgb.XGBClassifier):
             return "auc" if self.problem_type == "binary" else "mlogloss"
-        elif self.model_name == "lgb":
+        elif isinstance(model, lgb.LGBMClassifier):
             return "auc" if self.problem_type == "binary" else "multi_logloss"
-        elif self.model_name == "cat":
+        elif isinstance(model, cb.CatBoostClassifier):
             return "AUC" if self.problem_type == "binary" else "TotalF1"
+        return None
 
-    def _objective(self, trial):
+    def _objective(self, trial: optuna.Trial) -> float:
         try:
-            model_class, param_fn, *_ = self.model_specs[self.model_name]
-            params = param_fn(trial)
-            model = model_class(**params)
-            return self._cross_val_score(model) if self.use_cv else self._evaluate_model(model)
-        except Exception:
+            params = self.param_generator(trial)
+            trial_pipeline = clone(self.pipeline)
+            trial_pipeline.set_params(**{f"{self.model_step}__{k}": v for k, v in params.items()})
+            return self._cross_val_score(trial_pipeline) if self.use_cv else self._evaluate(trial_pipeline)
+        except Exception as e:
+            logger.warning(f"[Trial failed] {e}")
             return float("nan")
 
-    def _cross_val_score(self, model):
-        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-        scorer = make_scorer(f1_score, average=self._average_strategy())
-        scores = cross_val_score(model, self.X_train, self.y_train, cv=cv, scoring=scorer)
-        return scores.mean()
+    def _cross_val_score(self, model: Pipeline) -> float:
+        kf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        scoring_func = make_scorer(f1_score, average=self._get_average_strategy())
+        scores = []
 
-    def _evaluate_model(self, model):
+        for train_idx, val_idx in kf.split(self.X_train, self.y_train):
+            X_train, X_val = self.X_train.iloc[train_idx], self.X_train.iloc[val_idx]
+            y_train, y_val = self.y_train[train_idx], self.y_train[val_idx]
+
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_val)
+            scores.append(scoring_func._score_func(y_val, y_pred, average=self._get_average_strategy()))
+        return float(np.mean(scores))
+
+    def _evaluate(self, model: Pipeline) -> float:
         model.fit(self.X_train, self.y_train)
-        if self.X_test is not None and self.y_test is not None:
+        if self.X_test is not None:
             preds = model.predict(self.X_test)
-            return f1_score(self.y_test, preds, average=self._average_strategy())
+            return f1_score(self.y_test, preds, average=self._get_average_strategy())
+        return model.score(self.X_train, self.y_train)
 
-    def _params_cat(self, trial):
-        params = {
+    def _catboost_params(self, trial: optuna.Trial) -> Dict[str, Any]:
+        return {
             "iterations": trial.suggest_int("iterations", 100, 1000),
             "learning_rate": trial.suggest_float("learning_rate", 1e-4, 0.05, log=True),
             "depth": trial.suggest_int("depth", 4, 12),
@@ -101,12 +138,11 @@ class ClassificationHyperTuner:
             "bootstrap_type": trial.suggest_categorical("bootstrap_type", ["Bayesian", "Bernoulli", "MVS"]),
             "random_seed": 42,
             "verbose": 0,
-            "eval_metric": self._eval_metric(),
+            "eval_metric": self._get_eval_metric(),
             "loss_function": "Logloss" if self.problem_type == "binary" else "MultiClass"
         }
-        return params
 
-    def _params_xgb(self, trial):
+    def _xgb_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         lr = trial.suggest_float("learning_rate", 1e-3, 0.1, log=True)
         n_estimators = trial.suggest_int("n_estimators", 500, 1200 if lr < 0.03 else 1000)
         params = {
@@ -119,25 +155,20 @@ class ClassificationHyperTuner:
             "subsample": trial.suggest_float("subsample", 0.6, 1.0),
             "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
             "gamma": trial.suggest_float("gamma", 0.0, 5.0),
-            # "lambda": trial.suggest_float("lambda", 1e-3, 2.0, log=True),
             "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 2.0, log=True),
-
             "alpha": trial.suggest_float("alpha", 1e-3, 2.0, log=True),
             "random_state": 42,
             "verbosity": 0,
-            "eval_metric": self._eval_metric(),
+            "eval_metric": self._get_eval_metric(),
             "objective": "binary:logistic" if self.problem_type == "binary" else "multi:softprob"
         }
-
         if self.problem_type == "multiclass":
             params["num_class"] = self.num_classes
-
         return params
 
-    def _params_lgb(self, trial):
+    def _lgb_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         lr = trial.suggest_float("learning_rate", 1e-3, 0.1, log=True)
         n_estimators = trial.suggest_int("n_estimators", 500, 4000 if lr < 0.01 else 2000)
-
         params = {
             "learning_rate": lr,
             "n_estimators": n_estimators,
@@ -153,22 +184,22 @@ class ClassificationHyperTuner:
             "min_split_gain": trial.suggest_float("min_split_gain", 0.0, 1.0),
             "verbose": -1,
             "random_state": 42,
-            "metric": self._eval_metric(),
+            "metric": self._get_eval_metric(),
             "objective": "binary" if self.problem_type == "binary" else "multiclass"
         }
         if self.problem_type == "multiclass":
             params["num_class"] = self.num_classes
         return params
-    
-    def run_optimization(self):
-        study = optuna.create_study(direction='maximize')
+
+    def run(self) -> Tuple[Dict[str, Any], float]:
+        study = optuna.create_study(direction="maximize")
         study.optimize(self._objective, n_trials=self.n_trials, show_progress_bar=True)
 
-        model_class, *_ = self.model_specs[self.model_name]
-        best_model = model_class(**study.best_params)
-        best_model.fit(self.X_train, self.y_train)
+        final_pipeline = clone(self.pipeline)
+        final_pipeline.set_params(**{f"{self.model_step}__{k}": v for k, v in study.best_params.items()})
+        final_pipeline.fit(self.X_train, self.y_train)
 
-        if self.X_test is not None and self.y_test is not None:
-            self._evaluate_model(best_model)
+        if self.X_test is not None:
+            self._evaluate(final_pipeline)
 
         return study.best_params, study.best_value

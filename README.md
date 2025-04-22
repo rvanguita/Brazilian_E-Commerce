@@ -10,9 +10,37 @@ On the other hand, this technique can also be used to detect potential issues or
 
 ## Objective
 
-The objective of this study is to train a machine learning model to solve a Natural Language Processing (NLP) problem, using data from a Brazilian e-commerce platform. Given the nature of the data (related to shopping experiences) the classification was defined into two main sentiments: positive and negative. This is justified by the fact that, in general, comments tend to express either praise or complaints, especially regarding aspects such as product delivery.
+The objective of this study is to **train a machine learning model** to address a **Natural Language Processing (NLP)** problem, using data obtained from a Brazilian e-commerce platform. The primary focus is the development of a **sentiment classification system** based on text data, capable of identifying whether an expressed opinion is **positive, negative, or neutral**.
 
-At the end of this study, a function was developed to identify the sentiment of a given sentence, returning not only the predictive classification, but also the confidence percentage associated with the prediction.
+The project is divided into two main phases:
+
+### Phase 1: Binary Classification (Positive vs. Negative)
+In this initial stage, with **well-defined and balanced classes**, it was possible to achieve **excellent performance** in metrics such as **F1-Score** and **AUC (Area Under the ROC Curve)**, indicating a high discriminative capacity between positive and negative sentiments.
+
+### Phase 2: Multiclass Classification (Positive, Negative, and Neutral)
+The inclusion of the **neutral** class, which is significantly underrepresented, introduced new challenges to the model, particularly in terms of **probability calibration** and performance on **macro-averaged metrics** and **per-class evaluation**, requiring more refined adjustments to maintain system robustness.
+
+At the conclusion of the study, a **function was developed to identify the sentiment of a given sentence**, returning not only the **predicted label**, but also the **associated confidence score**, thus enhancing the interpretability of the model’s output.
+
+### A/B Experiment
+
+To compare the proposed approaches, this project was structured as an **A/B experiment**, in which the **binary classification model (A)** is compared against the **multiclass model (B)**. The objective of this comparison is to evaluate the **performance gains or losses** resulting from the inclusion of the **neutral class**, analyzing its impact from multiple perspectives, such as:
+
+- **Class distribution**  
+  Assessment of class balance and its effect on the training process.
+
+- **Confusion between the neutral class and others**  
+  Evaluation of misclassification rates involving the neutral class in contrast to the positive and negative classes.
+
+- **Comparison of macro vs. weighted metrics**  
+  Analysis of performance differences when considering class balance (macro) versus class frequency weighting (weighted).
+
+- **Probability calibration**  
+  Investigation of the quality of probabilistic estimates for predicted classes in each approach.
+
+This experiment allows not only for performance measurement, but also for a deeper understanding of the **practical implications** of introducing a third class in sentiment analysis problems.
+
+
 
 ### Repository Structure
 
@@ -26,9 +54,10 @@ The `data/` directory contains the `.csv` file with the dataset used in this pro
 
 ## [Data set](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
 
-The dataset used in this project was obtained from the Kaggle platform, where additional information is available, including detailed descriptions of each column and the corresponding data types.
+The **Brazilian E-Commerce Public Dataset**, made available by Olist, is a comprehensive dataset that documents approximately **100,000 orders placed between 2016 and 2018** across various Brazilian online marketplaces.
 
-We deliberately chose not to include these descriptions directly in this `README.md` to keep the content concise and avoid overloading the document. For further details regarding the dataset structure, we recommend referring to the original project page on Kaggle.
+This dataset provides a **detailed view of the e-commerce ecosystem in Brazil**, covering information about **customers, sellers, products, payments, deliveries, and customer reviews**. Its richness and diversity make it a valuable resource for analyses in multiple domains, such as consumer behavior, logistics, service quality, and, in this case, **sentiment classification in customer reviews**.
+
 
 ## Methodology and Results
 
@@ -62,16 +91,36 @@ text_pipeline = Pipeline([
 ])
 ```
 
-The model selected for this study was the LGBMClassifier, chosen for its strong performance when combined with vector representations generated through the TF-IDF method. The following are presented below: the confusion matrix, the ROC curve, and a table with all evaluation metrics. Model training was performed using cross-validation to ensure robustness and generalizability of results. Among the evaluation metrics, the model achieved a ROC AUC of 94.10% and an F1 Score of 88.63	%, highlighting its effectiveness in the sentiment classification task.
+## Model Training and Evaluation
+
+The model selected for this study was the **XGBClassifier**, chosen for its strong performance when combined with vector representations generated via the **TF-IDF** method.
+
+To enhance model performance, **hyperparameter optimization** was performed using the **Optuna** library in conjunction with **stratified cross-validation (StratifiedKFold)**. This approach aimed to ensure greater robustness and generalization of the optimized parameters. A total of **100 trials** were executed, exploring multiple hyperparameter combinations. For full details of the configuration and execution, refer to the file [`src/tuning/classification_hyper_tuner.py`](https://github.com/rvanguita/Brazilian_E-Commerce/blob/main/src/tuning/classification_hyper_tuner.py).
+
+After applying the best hyperparameter set to the classification pipeline, the results obtained through cross-validation indicated a **solid and balanced performance**, as summarized in the table below:
+
+| Accuracy | Precision | Recall | F1 Score | ROC AUC | Matthews Corrcoef | Cohen Kappa | Brier Score | Log Loss |
+|----------|-----------|--------|----------|---------|--------------------|-------------|--------------|----------|
+| 88.11%   | 87.38%    | 87.34% | 87.36%   | 94.08%  | 0.75               | 0.75        | 0.09         | 29.93    |
+
+The metrics **Accuracy**, **Precision**, **Recall**, **F1 Score**, and **ROC AUC** indicate efficient classification, with a good balance between **false positives and false negatives**.
+
+Additionally, the **Matthews Correlation Coefficient (MCC)** and **Cohen’s Kappa**, both scoring **0.75**, reinforce the model's robustness — particularly valuable in scenarios with potential class imbalance, as they account for all elements in the **confusion matrix**.
+
+The **Brier Score** of **0.09** shows that the **predicted probabilities are well-calibrated**, i.e., close to the actual observed frequencies. As for the **Log Loss value (29.93)**, although seemingly high, it is important to note that it is **not normalized by the number of samples**. Since cross-validation was applied over the entire dataset, such an accumulated value is expected and **does not compromise the model’s overall performance**.
+
+
+
+
+A seguir, são apresentados: a matriz de confusão, a curva ROC e uma tabela com todas as métricas de avaliação. O treinamento do modelo foi realizado utilizando validação cruzada, a fim de garantir a robustez e a capacidade de generalização dos resultados. Entre as métricas de avaliação, o modelo alcançou uma AUC da curva ROC de 94,10% e um F1 Score de 88,63%, destacando sua eficácia na tarefa de classificação de sentimentos.
 
 
 ![](assets/img/2.png)
 
 
 
-| Accuracy | Precision | Recall | F1 Score | ROC AUC | Matthews Corrcoef | Cohen Kappa | Log Loss |
-|----------|-----------|--------|----------|---------|--------------------|-------------|----------|
-| 88.62    | 88.62     | 88.62  | 88.63    | 94.10   | 0.75               | 0.75        | 29.18    |
+
+
 
 
 

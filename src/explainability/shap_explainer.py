@@ -1,34 +1,40 @@
 import shap
 import pandas as pd
 from functools import lru_cache
+from typing import Optional, Union, List
+
 
 class ShapExplainer:
-    def __init__(self, model, X_test, df_feature, features_drop=None, verbose=False):
-        """
-        Classe para análise e visualização de explicações SHAP.
-        """
+    """
+    Utility class for SHAP-based model interpretation and visualization.
+    """
+
+    def __init__(
+        self,
+        model,
+        X_test,
+        df_feature: pd.DataFrame,
+        features_drop: Optional[Union[str, List[str]]] = None,
+        verbose: bool = False
+    ):
         self.model = model
         self.X_test = X_test
         self.verbose = verbose
 
-        # Verificação e definição dos nomes das features
-        self.feature_names = df_feature.columns
-        if features_drop:
-            self.feature_names = df_feature.drop(features_drop, axis=1).columns
-        assert X_test.shape[1] == len(self.feature_names), "Mismatch entre X_test e df_feature"
+        self.feature_names = df_feature.drop(columns=features_drop).columns if features_drop else df_feature.columns
+        assert X_test.shape[1] == len(self.feature_names), "Shape mismatch between X_test and feature names"
 
-        # Criar o explicador uma única vez
         self.explainer = shap.Explainer(self.model)
 
     @lru_cache()
     def _shap_values(self):
-        """Cache dos valores SHAP para evitar múltiplos cálculos."""
+        """Computes and caches SHAP values for the test set."""
         if self.verbose:
-            print("Calculando valores SHAP...")
+            print("Computing SHAP values...")
         return self.explainer(self.X_test)
 
-    def plot_basic_summary(self, extension=False):
-        """Plota gráficos beeswarm, bar e waterfall com SHAP."""
+    def plot_basic_summary(self, include_extended: bool = False) -> None:
+        """Plots standard SHAP visualizations: beeswarm, bar, and waterfall."""
         shap_values = self._shap_values()
         shap_values.feature_names = self.feature_names
 
@@ -36,43 +42,56 @@ class ShapExplainer:
         shap.plots.bar(shap_values)
         shap.plots.waterfall(shap_values[0])
 
-        if extension:
+        if include_extended:
             shap.summary_plot(shap_values, self.X_test, feature_names=self.feature_names)
 
-    def plot_force_plot(self, sample_idx=0):
-        """Plota gráfico de força para uma amostra específica."""
+    def plot_force_plot(self, sample_idx: int = 0) -> None:
+        """Displays a force plot for a single prediction."""
         shap_values = self._shap_values()
-        X_test_df = pd.DataFrame(self.X_test, columns=self.feature_names)
+        X_df = pd.DataFrame(self.X_test, columns=self.feature_names)
 
-        shap_explanation = shap.Explanation(
+        explanation = shap.Explanation(
             values=shap_values.values[sample_idx],
             base_values=self.explainer.expected_value,
-            data=X_test_df.iloc[sample_idx],
+            data=X_df.iloc[sample_idx],
             feature_names=self.feature_names
         )
 
         shap.initjs()
-        shap.force_plot(shap_explanation.base_values, shap_explanation.values, shap_explanation.data)
+        shap.force_plot(explanation.base_values, explanation.values, explanation.data)
 
-    def plot_detailed_report(self, sample_idx=0, comparison=False, analysis=None, interaction_index=None, show_interactions=False):
-        """Plota relatório completo de análise SHAP para uma amostra."""
+    def plot_detailed_report(
+        self,
+        sample_idx: int = 0,
+        comparison: bool = False,
+        analysis: Optional[str] = None,
+        interaction_index: Optional[Union[int, str]] = None,
+        show_interactions: bool = False
+    ) -> None:
+        """Creates an interactive SHAP report for a given sample."""
         shap_values = self._shap_values()
-        X_test_df = pd.DataFrame(self.X_test, columns=self.feature_names)
+        X_df = pd.DataFrame(self.X_test, columns=self.feature_names)
 
-        # Force plot e decision plot
-        shap_explanation = shap.Explanation(
+        explanation = shap.Explanation(
             values=shap_values.values[sample_idx],
             base_values=self.explainer.expected_value,
-            data=X_test_df.iloc[sample_idx],
+            data=X_df.iloc[sample_idx],
             feature_names=self.feature_names
         )
+
         shap.initjs()
-        shap.force_plot(shap_explanation.base_values, shap_explanation.values, shap_explanation.data)
-        shap.decision_plot(shap_explanation.base_values, shap_explanation.values, shap_explanation.data)
+        shap.force_plot(explanation.base_values, explanation.values, explanation.data)
+        shap.decision_plot(explanation.base_values, explanation.values, explanation.data)
 
         if show_interactions:
-            shap_interaction_values = self.explainer.shap_interaction_values(self.X_test)
-            shap.summary_plot(shap_interaction_values, self.X_test, feature_names=self.feature_names)
+            interaction_values = self.explainer.shap_interaction_values(self.X_test)
+            shap.summary_plot(interaction_values, self.X_test, feature_names=self.feature_names)
 
-        if comparison and analysis is not None:
-            shap.dependence_plot(analysis, shap_values, self.X_test, feature_names=self.feature_names, interaction_index=interaction_index)
+        if comparison and analysis:
+            shap.dependence_plot(
+                feature=analysis,
+                shap_values=shap_values,
+                features=self.X_test,
+                feature_names=self.feature_names,
+                interaction_index=interaction_index
+            )
