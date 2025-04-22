@@ -2,7 +2,7 @@ import shap
 import pandas as pd
 from functools import lru_cache
 
-class ShapPlot:
+class ShapExplainer:
     def __init__(self, model, X_test, df_feature, features_drop=None, verbose=False):
         """
         Classe para análise e visualização de explicações SHAP.

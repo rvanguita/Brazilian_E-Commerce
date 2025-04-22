@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 
 
-class DataVisualizer:
+class EDAVisualizer:
     def __init__(self, dataframe, color='#c3e88d', figsize=(24, 12), title=''):
         """
         Initializes the DataVisualizer with a DataFrame and default plot settings.
