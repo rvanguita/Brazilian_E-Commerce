@@ -15,11 +15,9 @@ class StringCleanerTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X, y=None):
-        print("Starting transformation in StringCleanerTransformer...")
         X = ensure_string_series(X).tolist()
         for function in self.batch_functions:
             X = function(X)
-        print("Finished transformation in StringCleanerTransformer.")
         return X
 
 
@@ -110,15 +108,11 @@ class StopwordFilter(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X, y=None):
-        print("Starting transformation in StopwordFilter...")
         X = ensure_string_series(X)
-        result = [' '.join(self._remove_stopwords(text)) for text in X]
-        print("Finished transformation in StopwordFilter.")
-        return result
+        return [' '.join(self._remove_stopwords(text)) for text in X]
 
     def _remove_stopwords(self, text: str) -> List[str]:
         return [word.lower() for word in text.split() if word.lower() not in self.stopwords]
-
 
 
 def ensure_string_series(X: Union[pd.Series, pd.DataFrame, List[str]]) -> pd.Series:

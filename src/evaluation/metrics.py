@@ -92,9 +92,8 @@ class ClassifierMetricsEvaluator:
         }
 
         X_tests, y_trues, y_preds, y_probas = [], [], [], []
-        print("Starting cross-validation...")
+
         for fold_idx, (train_idx, test_idx) in enumerate(tqdm(cv.split(X, y), total=n_splits, desc="Cross-validation")):
-            print(f"Processing fold {fold_idx + 1}/{n_splits}...")
             X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
             y_train, y_test = y[train_idx], y[test_idx]
 
@@ -115,10 +114,7 @@ class ClassifierMetricsEvaluator:
             for metric, value in fold_metrics.items():
                 aggregate_metrics[metric].append(value)
 
-            print(f"Finished fold {fold_idx + 1}/{n_splits}.")
-
         final_metrics = pd.DataFrame([{k: round(np.mean(v), 2) for k, v in aggregate_metrics.items()}])
-        print("Cross-validation completed.")
 
         return (
             final_metrics,

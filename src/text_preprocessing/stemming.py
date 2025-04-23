@@ -11,15 +11,11 @@ class StemmerTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X: Union[pd.Series, pd.DataFrame, List[str]], y=None) -> List[str]:
-        print("Starting transformation in StemmerTransformer...")
         X = ensure_string_series(X)
-        result = [' '.join(self._apply_stemming(text)) for text in X]
-        print("Finished transformation in StemmerTransformer.")
-        return result
+        return [' '.join(self._apply_stemming(text)) for text in X]
 
     def _apply_stemming(self, text: str) -> List[str]:
         return [self.stemmer.stem(word) for word in text.split()]
-
 
 
 def ensure_string_series(X: Union[pd.Series, pd.DataFrame, List[str]]) -> pd.Series:
