@@ -101,7 +101,8 @@ After applying the best hyperparameter set to the classification pipeline, the r
 
 | Accuracy | Precision | Recall | F1 Score | ROC AUC | Matthews Corrcoef | Cohen Kappa | Brier Score | Log Loss |
 |----------|-----------|--------|----------|---------|--------------------|-------------|--------------|----------|
-| 88.11%   | 87.38%    | 87.34% | 87.36%   | 94.08%  | 0.75               | 0.75        | 0.09         | 29.93    |
+| 89.17%   | 88.52%    | 88.44% | 88.48%   | 94.77%  | 0.77               | 0.77        | 0.08         | 28.04    |
+
 
 The metrics **Accuracy**, **Precision**, **Recall**, **F1 Score**, and **ROC AUC** indicate efficient classification, with a good balance between **false positives and false negatives**.
 
@@ -143,3 +144,11 @@ The final sentence presents an **ambiguous or neutral tone**, reflecting uncerta
 Next, a word cloud is presented for each sentiment class (positive and negative), displaying the most frequently occurring terms. The word size corresponds to the frequency of each term in the analyzed comments, allowing for a quick visual identification of the most representative words in each sentiment category.
 
   ![](assets/img/6.png)
+
+
+
+
+
+| Accuracy | Precision | Recall | F1 Score | ROC AUC | Matthews Corrcoef | Cohen Kappa | Brier Score | Log Loss |
+|----------|-----------|--------|----------|---------|--------------------|-------------|--------------|----------|
+| 83.59    | 65.41     | 62.86  | 62.12    | 88.93   | 0.68               | 0.67        | 0.08         | 45.07    |
